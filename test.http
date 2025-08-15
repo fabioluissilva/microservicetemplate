@@ -1,5 +1,5 @@
 ### Ping
-GET http://localhost:8001/ping
+GET http://localhost:8001/ping?message=hello
 
 ### Ping2
 GET http://localhost:8001/ping2
