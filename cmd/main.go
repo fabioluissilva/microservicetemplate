@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 
-	"jmartins.com/microservicetemplate/commonconfig"
-	"jmartins.com/microservicetemplate/commonlogger"
-	"jmartins.com/microservicetemplate/utilities"
+	"github.com/fabioluissilva/microservicetemplate/commonconfig"
+	"github.com/fabioluissilva/microservicetemplate/commonlogger"
+	"github.com/fabioluissilva/microservicetemplate/utilities"
 )
 
 type ServiceConfig struct {

@@ -1,4 +1,4 @@
-module jmartins.com/microservicetemplate
+module github.com/fabioluissilva/microservicetemplate
 
 go 1.24.6
 

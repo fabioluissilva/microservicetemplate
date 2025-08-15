@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/fabioluissilva/microservicetemplate/commonlogger"
 	"github.com/spf13/viper"
-	"jmartins.com/microservicetemplate/commonlogger"
 )
 
 const (
