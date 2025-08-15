@@ -62,5 +62,6 @@ func InitializeMetrics() {
 	UnauthorizedRequests = NewCounter("_unauthorized_requests_count", "The total number of unauthorized requests")
 	NumberOfConfigRequests = NewCounter("_config_requests_count", "The total number of configuration requests")
 	NumberOfStatusRequests = NewCounter("_status_requests_count", "The total number of status requests")
+	ServiceStartTime.SetToCurrentTime()
 	commonlogger.Debug("Metrics initialized successfully", "package", "metrics", "service", commonconfig.GetConfig().GetServiceName())
 }

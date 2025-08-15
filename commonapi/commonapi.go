@@ -16,6 +16,7 @@ import (
 	"github.com/fabioluissilva/microservicetemplate/commonconfig"
 	"github.com/fabioluissilva/microservicetemplate/commonlogger"
 	"github.com/fabioluissilva/microservicetemplate/commonmetrics"
+	"github.com/fabioluissilva/microservicetemplate/commonscheduler"
 	"github.com/fabioluissilva/microservicetemplate/utilities"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -26,13 +27,15 @@ type RouteMap map[string]http.HandlerFunc
 func defaultRoutes(cfg commonconfig.Config) RouteMap {
 
 	return RouteMap{
-		"/ping":         pingHandler,                    // no cfg needed
-		"/config":       withAPIKey(configHandler(cfg)), // needs cfg
-		"/releasenotes": releaseNotesHandler,
-		"/metrics":      promhttp.Handler().ServeHTTP,
-		"/health":       healthHandler,
-		"/liveness":     livenessHandler,
-		"/readiness":    readinessHandler,
+		"/ping":          pingHandler,                    // no cfg needed
+		"/config":        withAPIKey(configHandler(cfg)), // needs cfg
+		"/releasenotes":  releaseNotesHandler,
+		"/metrics":       promhttp.Handler().ServeHTTP,
+		"/health":        healthHandler,
+		"/liveness":      livenessHandler,
+		"/readiness":     readinessHandler,
+		"/runningjobs":   withAPIKey(runningJobsHandler),   // needs API key
+		"/scheduledjobs": withAPIKey(scheduledJobsHandler), // needs API key
 	}
 }
 
@@ -146,6 +149,28 @@ func readinessHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// TODO: Add readiness check
 	WriteJSONResponse(w, map[string]string{"status": "ready"})
+}
+
+func runningJobsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, `{"error": "Only GET method is allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+	commonlogger.Debug("[API] Scheduled jobs request received", "service", commonconfig.GetConfig().GetServiceName())
+	jobs := commonscheduler.GetJobsInfo()
+	commonlogger.Debug(fmt.Sprintf("[API] Scheduled jobs response: %v", jobs), "service", commonconfig.GetConfig().GetServiceName())
+	WriteJSONResponse(w, jobs)
+}
+
+func scheduledJobsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, `{"error": "Only GET method is allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+	commonlogger.Debug("[API] Scheduled jobs request received", "service", commonconfig.GetConfig().GetServiceName())
+	jobs := commonscheduler.GetScheduledJobs()
+	commonlogger.Debug(fmt.Sprintf("[API] Scheduled jobs response: %v", jobs), "service", commonconfig.GetConfig().GetServiceName())
+	WriteJSONResponse(w, jobs)
 }
 
 func StartAPI(cfg commonconfig.Config, overrides RouteMap) (chan struct{}, error) {

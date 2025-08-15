@@ -8,6 +8,7 @@ import (
 	"github.com/fabioluissilva/microservicetemplate/commonconfig"
 	"github.com/fabioluissilva/microservicetemplate/commonlogger"
 	"github.com/fabioluissilva/microservicetemplate/commonmetrics"
+	"github.com/fabioluissilva/microservicetemplate/commonscheduler"
 )
 
 type ServiceConfig struct {
@@ -41,11 +42,27 @@ func customPingHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+func customScheduledJob() {
+	commonlogger.Info("Custom Scheduled Job executed", "service", commonconfig.GetConfig().GetServiceName())
+	// You can add more logic here, like sending metrics or logging
+}
+
 func main() {
 	var config ServiceConfig
 	commonconfig.Initialize(&config)
 	commonmetrics.InitializeMetrics()
 	commonlogger.Info("Main Started")
+	// Define a custom scheduled job
+	scheduledJobs := []commonscheduler.CronJob{
+		{
+			Name:     "Custom Scheduled Job",
+			CronExpr: "*/1 * * * *",
+			Job:      customScheduledJob,
+			Tags:     []string{"custom", "scheduled"},
+		},
+	}
+	// you can pass nil if you don't have custom jobs
+	commonscheduler.InitScheduler(scheduledJobs)
 
 	// Start the API server with a ping custom handler. Note that this is a separate route from the default ping handler.
 	// If you want to override the existing one, just add the same route with a different handler.

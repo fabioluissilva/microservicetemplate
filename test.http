@@ -17,3 +17,11 @@ GET http://localhost:8001/health
 ### Config
 GET http://localhost:8001/config
 X-API-Key: 1234
+
+### Scheduled Jobs
+GET http://localhost:8001/scheduledjobs
+X-API-Key: 1234
+
+### Running Jobs
+GET http://localhost:8001/runningjobs
+X-API-Key: 1234

@@ -17,15 +17,19 @@ type Config interface {
 	GetApiKey() string
 	GetMetricsPort() int
 	GetPort() int
+	GetHeartBeatDebug() bool
+	GetHeartBeatCron() string
 }
 
 type BaseConfig struct {
-	Version     string `mapstructure:"VERSION"`
-	LogLevel    string `mapstructure:"LOG_LEVEL"`
-	ServiceName string `mapstructure:"SERVICE_NAME"`
-	ApiKey      string `mapstructure:"API_KEY" sensitive:"true"`
-	MetricsPort int    `mapstructure:"METRICS_PORT"`
-	Port        int    `mapstructure:"PORT"`
+	Version        string `mapstructure:"VERSION"`
+	LogLevel       string `mapstructure:"LOG_LEVEL"`
+	ServiceName    string `mapstructure:"SERVICE_NAME"`
+	ApiKey         string `mapstructure:"API_KEY" sensitive:"true"`
+	MetricsPort    int    `mapstructure:"METRICS_PORT"`
+	Port           int    `mapstructure:"PORT"`
+	HeartBeatDebug bool   `mapstructure:"HEARTBEAT_DEBUG"`
+	HeartBeatCron  string `mapstructure:"HEARTBEAT_CRON"`
 }
 
 func (c *BaseConfig) GetVersion() string {
@@ -42,6 +46,19 @@ func (c *BaseConfig) GetServiceName() string {
 
 func (c *BaseConfig) GetApiKey() string {
 	return c.ApiKey
+}
+func (c *BaseConfig) GetMetricsPort() int {
+	return c.MetricsPort
+}
+func (c *BaseConfig) GetPort() int {
+	return c.Port
+}
+func (c *BaseConfig) GetHeartBeatDebug() bool {
+	return c.HeartBeatDebug
+}
+
+func (c *BaseConfig) GetHeartBeatCron() string {
+	return c.HeartBeatCron
 }
 
 var (
@@ -64,12 +81,13 @@ func Initialize(target Config) {
 		viper.AddConfigPath(".")
 		viper.AddConfigPath("..")
 		viper.SetConfigType("toml")
+		viper.SetDefault("VERSION", "0.0.0")
 		viper.SetDefault("SERVICE_NAME", "servicetemplate")
 		viper.SetDefault("LOG_LEVEL", "INFO")
-		viper.SetDefault("VERSION", "0.0.0")
 		viper.SetDefault("METRICS_PORT", 9091)
 		viper.SetDefault("PORT", 8001)
-
+		viper.SetDefault("HEARTBEAT_DEBUG", false)
+		viper.SetDefault("HEARTBEAT_CRON", "*/1 * * * *")
 		viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
 		viper.AutomaticEnv()
 
