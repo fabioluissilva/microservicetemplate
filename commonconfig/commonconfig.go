@@ -10,10 +10,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-const (
-	MESSAGEADAPTERNAME = "messageadapterphotoss3"
-)
-
 type Config interface {
 	GetVersion() string
 	GetLogLevel() string
