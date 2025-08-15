@@ -53,16 +53,6 @@ func GetConfig() Config {
 	return conf
 }
 
-func ReadReleaseNotes() (string, error) {
-	releaseNotesPath := "releasenotes.txt"
-	commonlogger.GetLogger().Debug(fmt.Sprintf("Reading Release Notes from: %s", releaseNotesPath))
-	content, err := os.ReadFile(releaseNotesPath)
-	if err != nil {
-		return "", err
-	}
-	return string(content), nil
-}
-
 func Initialize(target Config) {
 	once.Do(func() {
 		// defaults
@@ -71,7 +61,7 @@ func Initialize(target Config) {
 		viper.AddConfigPath("..")
 		viper.SetConfigType("toml")
 		viper.SetDefault("SERVICE_NAME", "servicetemplate")
-		viper.SetDefault("LOG_LEVEL", "DEBUG")
+		viper.SetDefault("LOG_LEVEL", "INFO")
 		viper.SetDefault("VERSION", "0.0.0")
 
 		viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))

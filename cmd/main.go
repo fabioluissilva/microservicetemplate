@@ -29,7 +29,9 @@ func (c ServiceConfig) GetServiceName() string {
 func main() {
 	var config ServiceConfig
 	commonconfig.Initialize(&config)
-	commonlogger.Debug("Main Started")
+	commonlogger.Info("Main Started")
 	maskedConfig, _ := utilities.ToMaskedJSON(&config)
+	releasenotes, _ := utilities.ReadReleaseNotes()
+	fmt.Println(releasenotes)
 	fmt.Println(maskedConfig)
 }

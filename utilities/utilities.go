@@ -3,8 +3,11 @@ package utilities
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
+
+	"github.com/fabioluissilva/microservicetemplate/commonlogger"
 )
 
 // maskSensitive masks sensitive fields as requested.
@@ -140,4 +143,15 @@ func structToMaskedMap(v reflect.Value) (map[string]any, error) {
 		out[key] = val
 	}
 	return out, nil
+}
+
+func ReadReleaseNotes() (string, error) {
+	releaseNotesPath := "releasenotes.txt"
+	commonlogger.Debug(fmt.Sprintf("Reading Release Notes from: %s", releaseNotesPath))
+	content, err := os.ReadFile(releaseNotesPath)
+	if err != nil {
+		commonlogger.Error("Error reading release notes:", "error", err)
+		return "", err
+	}
+	return string(content), nil
 }
