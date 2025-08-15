@@ -1,6 +1,9 @@
 ### Ping
 GET http://localhost:8001/ping
 
+### Ping2
+GET http://localhost:8001/ping2
+
 ### Release Notes
 GET http://localhost:8001/releasenotes
 

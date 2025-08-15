@@ -1,13 +1,13 @@
 package main
 
 import (
-	"fmt"
+	"encoding/json"
+	"net/http"
 
 	"github.com/fabioluissilva/microservicetemplate/commonapi"
 	"github.com/fabioluissilva/microservicetemplate/commonconfig"
 	"github.com/fabioluissilva/microservicetemplate/commonlogger"
 	"github.com/fabioluissilva/microservicetemplate/commonmetrics"
-	"github.com/fabioluissilva/microservicetemplate/utilities"
 )
 
 type ServiceConfig struct {
@@ -34,17 +34,26 @@ func (c *ServiceConfig) GetPort() int {
 	return c.Port
 }
 
+func customPingHandler(w http.ResponseWriter, r *http.Request) {
+
+	response := map[string]string{"message": "Custom Ping Handler is working!"}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
 func main() {
 	var config ServiceConfig
 	commonconfig.Initialize(&config)
 	commonmetrics.InitializeMetrics()
 	commonlogger.Info("Main Started")
-	maskedConfig, _ := utilities.ToMaskedJSON(&config)
-	releasenotes, _ := utilities.ReadReleaseNotes()
-	fmt.Println(releasenotes)
-	fmt.Println(maskedConfig)
-	// Start the API server
-	done, err := commonapi.StartAPI(&config)
+
+	// Start the API server with a ping custom handler. Note that this is a separate route from the default ping handler.
+	// If you want to override the existing one, just add the same route with a different handler.
+	overrides := commonapi.RouteMap{
+		"/ping2": customPingHandler,
+	}
+	done, err := commonapi.StartAPI(&config, overrides)
+
 	if err != nil {
 		commonlogger.Error("Error starting API: ", "error", err.Error(), "service", commonconfig.GetConfig().GetServiceName())
 		return

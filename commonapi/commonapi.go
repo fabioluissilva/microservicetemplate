@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"reflect"
+	"runtime"
 	"strconv"
 	"syscall"
 	"time"
@@ -18,7 +20,21 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// Middleware to validate the API key for incoming requests
+// RouteMap is a mapping of route paths to their handler functions
+type RouteMap map[string]http.HandlerFunc
+
+func defaultRoutes(cfg commonconfig.Config) RouteMap {
+
+	return RouteMap{
+		"/ping":         pingHandler,                    // no cfg needed
+		"/config":       withAPIKey(configHandler(cfg)), // needs cfg
+		"/releasenotes": releaseNotesHandler,
+		"/metrics":      promhttp.Handler().ServeHTTP,
+		"/health":       healthHandler,
+		"/liveness":     livenessHandler,
+		"/readiness":    readinessHandler,
+	}
+}
 
 // Middleware to check if the X-API-KEY is present and valid according to the configuration
 // If the API key is invalid, it returns a 401 Unauthorized response.
@@ -132,30 +148,47 @@ func readinessHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, map[string]string{"status": "ready"})
 }
 
-func RegisterRoutes(cfg commonconfig.Config) error {
-	commonlogger.Debug("[API] Registering routes")
-	http.HandleFunc("/ping", pingHandler)
-	http.HandleFunc("/releasenotes", releaseNotesHandler)
-	http.HandleFunc("/config", withAPIKey(configHandler(cfg)))
-	http.Handle("/metrics", promhttp.Handler())
-	http.HandleFunc("/health", healthHandler)
-	http.HandleFunc("/liveness", livenessHandler)
-	http.HandleFunc("/readiness", readinessHandler)
-	commonlogger.Debug("Routes registered successfully")
+func RegisterRoutes(cfg commonconfig.Config, overrides RouteMap) error {
+	defaults := defaultRoutes(cfg)
+
+	// Log override actions
+	for path := range overrides {
+		if _, exists := defaults[path]; exists {
+			commonlogger.Debug(fmt.Sprintf("Overriding default route: %s", path))
+		} else {
+			commonlogger.Debug(fmt.Sprintf("Adding custom route: %s", path))
+		}
+	}
+
+	// Merge: overrides replace or add
+	for path, handler := range overrides {
+		defaults[path] = handler
+	}
+
+	// Register all routes
+	for path, handler := range defaults {
+		http.HandleFunc(path, handler)
+	}
+
+	commonlogger.Info("Routes registered:")
+	for path := range defaults {
+		commonlogger.Info("  " + path)
+	}
+
 	return nil
 }
 
-func StartAPI(cfg commonconfig.Config) (chan struct{}, error) {
+func StartAPI(cfg commonconfig.Config, overrides RouteMap) (chan struct{}, error) {
 	done := make(chan struct{})
-	commonlogger.Info("Starting Prometheus Metrics Listener on " + strconv.Itoa(commonconfig.GetConfig().GetMetricsPort()))
+	commonlogger.Info("Starting Prometheus Metrics Listener on " + strconv.Itoa(cfg.GetMetricsPort()))
 
 	// Create servers
 	metricsServer := &http.Server{
-		Addr:    ":" + strconv.Itoa(commonconfig.GetConfig().GetMetricsPort()),
+		Addr:    ":" + strconv.Itoa(cfg.GetMetricsPort()),
 		Handler: nil,
 	}
 	apiServer := &http.Server{
-		Addr:    ":" + strconv.Itoa(commonconfig.GetConfig().GetPort()),
+		Addr:    ":" + strconv.Itoa(cfg.GetPort()),
 		Handler: nil,
 	}
 
@@ -163,38 +196,43 @@ func StartAPI(cfg commonconfig.Config) (chan struct{}, error) {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGHUP)
 
-	// Start metrics server in goroutine
+	// Start metrics server
 	go func() {
 		if err := metricsServer.ListenAndServe(); err != http.ErrServerClosed {
 			commonlogger.Error("Metrics server error: " + err.Error())
 		}
 	}()
 
-	// Register routes
-	if err := RegisterRoutes(cfg); err != nil {
-		commonmetrics.NumberOfErrors.Inc()
-		commonlogger.Error("Error registering routes: " + err.Error())
-		return nil, err
+	// ✅ Apply overrides if provided
+	finalRoutes := defaultRoutes(cfg)
+	for path, handler := range overrides {
+		commonlogger.Debug(fmt.Sprintf("Overriding/adding route: %s", path))
+		finalRoutes[path] = handler
 	}
 
-	// Start API server in goroutine
+	// ✅ Register all routes
+	for path, handler := range finalRoutes {
+		handlerName := runtime.FuncForPC(reflect.ValueOf(handler).Pointer()).Name()
+		commonlogger.Info("Registered route:", "path", path, "handler", handlerName)
+		http.HandleFunc(path, handler)
+	}
+
+	// Start API server
 	go func() {
-		commonlogger.Info("[API] Starting API on port " + strconv.Itoa(commonconfig.GetConfig().GetPort()))
+		commonlogger.Info("[API] Starting API on port " + strconv.Itoa(cfg.GetPort()))
 		if err := apiServer.ListenAndServe(); err != http.ErrServerClosed {
 			commonlogger.Error("API server error: " + err.Error())
 		}
 	}()
 
-	// Handle shutdown in a separate goroutine
+	// Graceful shutdown
 	go func() {
 		sig := <-sigChan
 		commonlogger.Info(fmt.Sprintf("Received signal: %v", sig))
 
-		// Create a context with timeout for shutdown
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		// Shutdown both servers
 		if err := metricsServer.Shutdown(ctx); err != nil {
 			commonlogger.Error("Metrics server shutdown error: " + err.Error())
 		}

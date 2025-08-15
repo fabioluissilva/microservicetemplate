@@ -7,6 +7,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
+// To extend metrics in your service, call commonmetrics.New* helpers
+// after calling InitializeMetrics(), e.g.:
+//
+//     var myMetric = commonmetrics.NewCounter("_my_metric", "Description")
+//     myMetric.Inc()
+
 // Helper functions for creating Prometheus metrics with service name prefix
 func NewCounter(suffix, help string) prometheus.Counter {
 	return promauto.NewCounter(prometheus.CounterOpts{
