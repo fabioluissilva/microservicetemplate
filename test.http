@@ -1,0 +1,16 @@
+### Ping
+GET http://localhost:8001/ping
+
+### Release Notes
+GET http://localhost:8001/releasenotes
+
+### Metrics
+GET http://localhost:9091/metrics
+
+### Health
+GET http://localhost:8001/health
+
+
+### Config
+GET http://localhost:8001/config
+X-API-Key: 1234

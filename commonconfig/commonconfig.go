@@ -15,6 +15,8 @@ type Config interface {
 	GetLogLevel() string
 	GetServiceName() string
 	GetApiKey() string
+	GetMetricsPort() int
+	GetPort() int
 }
 
 type BaseConfig struct {
@@ -22,6 +24,8 @@ type BaseConfig struct {
 	LogLevel    string `mapstructure:"LOG_LEVEL"`
 	ServiceName string `mapstructure:"SERVICE_NAME"`
 	ApiKey      string `mapstructure:"API_KEY" sensitive:"true"`
+	MetricsPort int    `mapstructure:"METRICS_PORT"`
+	Port        int    `mapstructure:"PORT"`
 }
 
 func (c *BaseConfig) GetVersion() string {
@@ -63,6 +67,8 @@ func Initialize(target Config) {
 		viper.SetDefault("SERVICE_NAME", "servicetemplate")
 		viper.SetDefault("LOG_LEVEL", "INFO")
 		viper.SetDefault("VERSION", "0.0.0")
+		viper.SetDefault("METRICS_PORT", 9091)
+		viper.SetDefault("PORT", 8001)
 
 		viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
 		viper.AutomaticEnv()

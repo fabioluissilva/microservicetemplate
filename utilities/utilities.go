@@ -20,19 +20,28 @@ func maskSensitive(value string) string {
 
 func ToMaskedJSON(cfg any) (string, error) {
 	v := reflect.ValueOf(cfg)
-	if v.Kind() == reflect.Pointer {
-		if v.IsNil() {
-			return "{}", nil
+
+	// Unwrap interface and pointer layers until we reach a struct
+	for {
+		if v.Kind() == reflect.Interface || v.Kind() == reflect.Pointer {
+			if v.IsNil() {
+				return "{}", nil
+			}
+			v = v.Elem()
+			continue
 		}
-		v = v.Elem()
+		break
 	}
+
 	if v.Kind() != reflect.Struct {
 		return "", fmt.Errorf("ToMaskedJSON: expected struct or *struct, got %s", v.Kind())
 	}
+
 	m, err := structToMaskedMap(v)
 	if err != nil {
 		return "", err
 	}
+
 	b, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return "", err
