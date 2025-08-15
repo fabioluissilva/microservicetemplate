@@ -10,8 +10,6 @@ import (
 
 type ServiceConfig struct {
 	commonconfig.BaseConfig `mapstructure:",squash"`
-	S3Bucket                string `mapstructure:"S3_BUCKET"`
-	S3Region                string `mapstructure:"S3_REGION"`
 	Test                    string `mapstructure:"TEST"`
 }
 

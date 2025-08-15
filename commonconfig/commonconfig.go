@@ -45,16 +45,16 @@ func (c *BaseConfig) GetApiKey() string {
 }
 
 var (
-	conf *Config
+	conf Config
 	once sync.Once
 )
 
 func setConfig(c Config) {
-	conf = &c
+	conf = c
 }
 
 func GetConfig() Config {
-	return *conf
+	return conf
 }
 
 func ReadReleaseNotes() (string, error) {
@@ -78,26 +78,28 @@ func Initialize(target Config) {
 		viper.SetDefault("LOG_LEVEL", "DEBUG")
 		viper.SetDefault("VERSION", "0.0.0")
 
-		setConfig(target)
-
 		viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
 		viper.AutomaticEnv()
 
 		err := viper.ReadInConfig()
 		if err != nil {
-			commonlogger.GetLogger().Error(fmt.Sprintf("[Config] Error loading config file: %s", err.Error()))
+			// don't use logger here yet!
+			fmt.Fprintf(os.Stderr, "[commonconfig] Error loading config file: %s\n", err.Error())
 			os.Exit(1)
 		}
-		err = viper.Unmarshal(&conf)
+
+		err = viper.Unmarshal(target)
 		if err != nil {
-			commonlogger.GetLogger().Error(fmt.Sprintf("[Config] Error parsing config file: %s", err.Error()))
+			fmt.Fprintf(os.Stderr, "[commonconfig] Error parsing config: %s\n", err.Error())
 			os.Exit(1)
 		}
-		commonlogger.SetLogLevel((*conf).GetLogLevel())
-		if (*conf).GetApiKey() == "" {
+
+		setConfig(target)
+		commonlogger.SetLogLevel(conf.GetLogLevel())
+		if conf.GetApiKey() == "" {
 			commonlogger.GetLogger().Error("API_KEY is required")
 			os.Exit(1)
 		}
-		commonlogger.Debug(fmt.Sprintf("Successfully Loaded configuration for service: %s", (*conf).GetServiceName()))
+		commonlogger.Debug(fmt.Sprintf("Successfully Loaded configuration for service: %s", conf.GetServiceName()))
 	})
 }
