@@ -51,7 +51,7 @@ func withAPIKey(fn http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func writeJSONResponse(w http.ResponseWriter, response interface{}) {
+func WriteJSONResponse(w http.ResponseWriter, response interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
@@ -98,7 +98,7 @@ func pingHandler(w http.ResponseWriter, r *http.Request) {
 		"message":   message,
 	}
 	commonmetrics.NumberOfPings.Inc()
-	writeJSONResponse(w, response)
+	WriteJSONResponse(w, response)
 }
 
 func configHandler(cfg commonconfig.Config) http.HandlerFunc {
@@ -128,7 +128,7 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 		commonlogger.Error("Only GET method is allowed", "package", "api", "service", commonconfig.GetConfig().GetServiceName())
 		return
 	}
-	writeJSONResponse(w, map[string]string{"status": "ok"})
+	WriteJSONResponse(w, map[string]string{"status": "ok"})
 }
 
 func livenessHandler(w http.ResponseWriter, r *http.Request) {
@@ -136,7 +136,7 @@ func livenessHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error": "Only GET method is allowed"}`, http.StatusMethodNotAllowed)
 		return
 	}
-	writeJSONResponse(w, map[string]string{"status": "alive"})
+	WriteJSONResponse(w, map[string]string{"status": "alive"})
 }
 
 func readinessHandler(w http.ResponseWriter, r *http.Request) {
@@ -145,7 +145,7 @@ func readinessHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// TODO: Add readiness check
-	writeJSONResponse(w, map[string]string{"status": "ready"})
+	WriteJSONResponse(w, map[string]string{"status": "ready"})
 }
 
 func StartAPI(cfg commonconfig.Config, overrides RouteMap) (chan struct{}, error) {
