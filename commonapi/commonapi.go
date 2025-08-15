@@ -103,11 +103,11 @@ func pingHandler(w http.ResponseWriter, r *http.Request) {
 
 func configHandler(cfg commonconfig.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		commonlogger.Debug("[API] Config request received")
+		commonlogger.Debug("[API] Config request received", "service", cfg.GetServiceName())
 		if r.Method != http.MethodGet {
 			commonmetrics.NumberOfErrors.Inc()
 			http.Error(w, `{"error": "Only GET method is allowed"}`, http.StatusMethodNotAllowed)
-			commonlogger.Error("Only GET method is allowed")
+			commonlogger.Error("Only GET method is allowed", "service", cfg.GetServiceName())
 		}
 		w.Header().Set("Content-Type", "application/json")
 		commonmetrics.NumberOfConfigRequests.Inc()
@@ -115,7 +115,7 @@ func configHandler(cfg commonconfig.Config) http.HandlerFunc {
 		if err != nil {
 			commonmetrics.NumberOfErrors.Inc()
 			http.Error(w, `{"error": "Failed to generate config JSON"}`, http.StatusInternalServerError)
-			commonlogger.Error("Failed to generate config JSON", "error", err.Error())
+			commonlogger.Error("Failed to generate config JSON", "error", err.Error(), "service", cfg.GetServiceName())
 			return
 		}
 		w.Write([]byte(maskedJson))
@@ -148,39 +148,9 @@ func readinessHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, map[string]string{"status": "ready"})
 }
 
-func RegisterRoutes(cfg commonconfig.Config, overrides RouteMap) error {
-	defaults := defaultRoutes(cfg)
-
-	// Log override actions
-	for path := range overrides {
-		if _, exists := defaults[path]; exists {
-			commonlogger.Debug(fmt.Sprintf("Overriding default route: %s", path))
-		} else {
-			commonlogger.Debug(fmt.Sprintf("Adding custom route: %s", path))
-		}
-	}
-
-	// Merge: overrides replace or add
-	for path, handler := range overrides {
-		defaults[path] = handler
-	}
-
-	// Register all routes
-	for path, handler := range defaults {
-		http.HandleFunc(path, handler)
-	}
-
-	commonlogger.Info("Routes registered:")
-	for path := range defaults {
-		commonlogger.Info("  " + path)
-	}
-
-	return nil
-}
-
 func StartAPI(cfg commonconfig.Config, overrides RouteMap) (chan struct{}, error) {
 	done := make(chan struct{})
-	commonlogger.Info("Starting Prometheus Metrics Listener on " + strconv.Itoa(cfg.GetMetricsPort()))
+	commonlogger.Info(fmt.Sprintf("Starting Prometheus Metrics Listener on %d", cfg.GetMetricsPort()), "service", cfg.GetServiceName())
 
 	// Create servers
 	metricsServer := &http.Server{
@@ -199,47 +169,46 @@ func StartAPI(cfg commonconfig.Config, overrides RouteMap) (chan struct{}, error
 	// Start metrics server
 	go func() {
 		if err := metricsServer.ListenAndServe(); err != http.ErrServerClosed {
-			commonlogger.Error("Metrics server error: " + err.Error())
+			commonlogger.Error(fmt.Sprintf("Metrics server error: %s", err.Error()), "service", cfg.GetServiceName())
 		}
 	}()
 
 	// ✅ Apply overrides if provided
 	finalRoutes := defaultRoutes(cfg)
 	for path, handler := range overrides {
-		commonlogger.Debug(fmt.Sprintf("Overriding/adding route: %s", path))
+		commonlogger.Debug(fmt.Sprintf("Overriding/adding route: %s", path), "service", cfg.GetServiceName())
 		finalRoutes[path] = handler
 	}
 
 	// ✅ Register all routes
 	for path, handler := range finalRoutes {
 		handlerName := runtime.FuncForPC(reflect.ValueOf(handler).Pointer()).Name()
-		commonlogger.Info("Registered route:", "path", path, "handler", handlerName)
+		commonlogger.Info(fmt.Sprintf("Registered route: %s - %s", path, handlerName), "service", cfg.GetServiceName())
 		http.HandleFunc(path, handler)
 	}
 
 	// Start API server
 	go func() {
-		commonlogger.Info("[API] Starting API on port " + strconv.Itoa(cfg.GetPort()))
+		commonlogger.Info(fmt.Sprintf("[API] Starting API on port %d", cfg.GetPort()), "service", cfg.GetServiceName())
 		if err := apiServer.ListenAndServe(); err != http.ErrServerClosed {
-			commonlogger.Error("API server error: " + err.Error())
+			commonlogger.Error(fmt.Sprintf("API server error: %s", err.Error()), "service", cfg.GetServiceName())
 		}
 	}()
 
 	// Graceful shutdown
 	go func() {
 		sig := <-sigChan
-		commonlogger.Info(fmt.Sprintf("Received signal: %v", sig))
+		commonlogger.Info(fmt.Sprintf("Received signal: %v", sig), "service", cfg.GetServiceName())
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		if err := metricsServer.Shutdown(ctx); err != nil {
-			commonlogger.Error("Metrics server shutdown error: " + err.Error())
+			commonlogger.Error(fmt.Sprintf("Metrics server shutdown error: %s", err.Error()), "service", cfg.GetServiceName())
 		}
 		if err := apiServer.Shutdown(ctx); err != nil {
-			commonlogger.Error("API server shutdown error: " + err.Error())
+			commonlogger.Error(fmt.Sprintf("API server shutdown error: %s", err.Error()), "service", cfg.GetServiceName())
 		}
-
 		close(done)
 	}()
 

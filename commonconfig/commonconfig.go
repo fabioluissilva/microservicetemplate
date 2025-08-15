@@ -89,9 +89,9 @@ func Initialize(target Config) {
 		setConfig(target)
 		commonlogger.SetLogLevel(conf.GetLogLevel())
 		if conf.GetApiKey() == "" {
-			commonlogger.GetLogger().Error("API_KEY is required")
+			commonlogger.GetLogger().Error("API_KEY is required", "service", conf.GetServiceName())
 			os.Exit(1)
 		}
-		commonlogger.Debug(fmt.Sprintf("Successfully Loaded configuration for service: %s", conf.GetServiceName()))
+		commonlogger.Debug("Successfully Loaded configuration", "service", conf.GetServiceName())
 	})
 }

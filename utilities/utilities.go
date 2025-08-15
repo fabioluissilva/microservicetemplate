@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/fabioluissilva/microservicetemplate/commonconfig"
 	"github.com/fabioluissilva/microservicetemplate/commonlogger"
 )
 
@@ -156,10 +157,10 @@ func structToMaskedMap(v reflect.Value) (map[string]any, error) {
 
 func ReadReleaseNotes() (string, error) {
 	releaseNotesPath := "releasenotes.txt"
-	commonlogger.Debug(fmt.Sprintf("Reading Release Notes from: %s", releaseNotesPath))
+	commonlogger.Debug(fmt.Sprintf("Reading Release Notes from: %s", releaseNotesPath), "service", commonconfig.GetConfig().GetServiceName())
 	content, err := os.ReadFile(releaseNotesPath)
 	if err != nil {
-		commonlogger.Error("Error reading release notes:", "error", err)
+		commonlogger.Error("Error reading release notes:", "error", err, "service", commonconfig.GetConfig().GetServiceName())
 		return "", err
 	}
 	return string(content), nil
