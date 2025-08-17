@@ -42,7 +42,7 @@ func GetJobsInfo() []JobInfo {
 
 func Heartbeat() {
 	if commonconfig.GetConfig().GetHeartBeatDebug() {
-		commonlogger.GetLogger().Debug("Sending Heartbeat...")
+		commonlogger.Debug("Sending Heartbeat...")
 	}
 	commonmetrics.HeartbeatCount.Inc()
 	commonmetrics.HeartbeatMessage.SetToCurrentTime()
@@ -67,25 +67,25 @@ func InitScheduler(extraJobs []CronJob) {
 	var err error
 	scheduler, err = gocron.NewScheduler()
 	if err != nil {
-		commonlogger.GetLogger().Error(fmt.Sprintf("InitScheduler: Error creating scheduler: %s", err.Error()))
+		commonlogger.Error(fmt.Sprintf("InitScheduler: Error creating scheduler: %s", err.Error()))
 		return
 	}
-	commonlogger.GetLogger().Debug("InitScheduler: Registering jobs...")
+	commonlogger.Debug("InitScheduler: Registering jobs...")
 	RegisterJobs(extraJobs)
 	for _, job := range jobs {
-		commonlogger.GetLogger().Debug("InitScheduler: Setting Cron for " + job.Name + ": " + job.CronExpr)
+		commonlogger.Debug("InitScheduler: Setting Cron for " + job.Name + ": " + job.CronExpr)
 		cronJob, err := scheduler.NewJob(
 			gocron.CronJob(job.CronExpr, false),
 			gocron.NewTask(job.Job),
 			gocron.WithTags(job.Tags...),
 		)
 		if err != nil {
-			commonlogger.GetLogger().Error("InitScheduler: Error starting " + job.Name + ": " + err.Error())
+			commonlogger.Error("InitScheduler: Error starting " + job.Name + ": " + err.Error())
 			continue
 		}
-		commonlogger.GetLogger().Debug("InitScheduler: Started " + job.Name + " with ID: " + cronJob.ID().String())
+		commonlogger.Debug("InitScheduler: Started " + job.Name + " with ID: " + cronJob.ID().String())
 	}
-	commonlogger.GetLogger().Debug("InitScheduler: Starting Scheduler...")
+	commonlogger.Debug("InitScheduler: Starting Scheduler...")
 	scheduler.Start()
 }
 

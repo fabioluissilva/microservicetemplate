@@ -215,11 +215,10 @@ func StartAPI(cfg commonconfig.Config, overrides RouteMap) (chan struct{}, error
 		commonlogger.Debug(fmt.Sprintf("Overriding/adding route: %s", path))
 		finalRoutes[path] = handler
 	}
-
-	// ✅ Register all routes
+	// Register all routes
 	for path, handler := range finalRoutes {
 		handlerName := runtime.FuncForPC(reflect.ValueOf(handler).Pointer()).Name()
-		commonlogger.Info(fmt.Sprintf("Registered route: %s - %s", path, handlerName))
+		commonlogger.Debug(fmt.Sprintf("Registering route: %s with handler: %s", path, handlerName))
 		http.HandleFunc(path, handler)
 	}
 

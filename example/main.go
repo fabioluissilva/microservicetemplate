@@ -54,7 +54,7 @@ func customPingHandlerWithAPIKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func customScheduledJob() {
-	commonlogger.Info("Custom Scheduled Job executed")
+	commonlogger.Debug("Custom Scheduled Job executed")
 	// You can add more logic here, like sending metrics or logging
 }
 
