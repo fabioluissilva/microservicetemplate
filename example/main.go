@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/fabioluissilva/microservicetemplate/commonconfig"
 	"github.com/fabioluissilva/microservicetemplate/commonlogger"
 	"github.com/fabioluissilva/microservicetemplate/commonmetrics"
+	"github.com/fabioluissilva/microservicetemplate/commonmqengine"
 	"github.com/fabioluissilva/microservicetemplate/commonscheduler"
 )
 
@@ -35,21 +37,31 @@ func (c *ServiceConfig) GetPort() int {
 	return c.Port
 }
 
-func customPingHandler(w http.ResponseWriter, r *http.Request) {
+func customPingHandlerWithoutAPIKey(w http.ResponseWriter, r *http.Request) {
 
-	response := map[string]string{"message": "Custom Ping Handler is working!"}
+	response := map[string]string{"message": "Custom Ping Handler Without API Key is working!"}
 	w.Header().Set("Content-Type", "application/json")
+	commonlogger.Info("Custom Ping Without API KEY Handler called")
+	json.NewEncoder(w).Encode(response)
+}
+
+func customPingHandlerWithAPIKey(w http.ResponseWriter, r *http.Request) {
+
+	response := map[string]string{"message": "Custom Ping Handler WITH API Key is working!"}
+	w.Header().Set("Content-Type", "application/json")
+	commonlogger.Info("Custom Ping with API KEY Handler called")
 	json.NewEncoder(w).Encode(response)
 }
 
 func customScheduledJob() {
-	commonlogger.Info("Custom Scheduled Job executed", "service", commonconfig.GetConfig().GetServiceName())
+	commonlogger.Info("Custom Scheduled Job executed")
 	// You can add more logic here, like sending metrics or logging
 }
 
 func main() {
 	var config ServiceConfig
 	commonconfig.Initialize(&config)
+	commonlogger.SetServiceName(config.GetServiceName())
 	commonmetrics.InitializeMetrics()
 	commonlogger.Info("Main Started")
 	// Define a custom scheduled job
@@ -63,23 +75,44 @@ func main() {
 	}
 	// you can pass nil if you don't have custom jobs
 	commonscheduler.InitScheduler(scheduledJobs)
+	// set RabbitMQ configuration
+	mqcfg := commonmqengine.NewMQConfiguration(
+		commonmqengine.WithCredentials("proxmox", "proxmox"),
+		commonmqengine.WithHost("rabbitmq.thothnet.local"),
+		commonmqengine.WithPort(5672),
+		commonmqengine.WithVHost("/"),
+		commonmqengine.WithQueues(
+			commonmqengine.NewQueue("orders",
+				commonmqengine.WithExchange(""),
+				commonmqengine.WithRoutingKey(""),
+				commonmqengine.WithDurable(true),
+			),
+			commonmqengine.NewQueue("audit",
+				commonmqengine.WithAutoDelete(true),
+				commonmqengine.WithDurable(true),
+			),
+		),
+	)
+	commonmqengine.InitMQEngine(context.Background(), *mqcfg)
 
 	// Start the API server with a ping custom handler. Note that this is a separate route from the default ping handler.
 	// If you want to override the existing one, just add the same route with a different handler.
+	// commonapi exports a WithAPIKey middleware that can be used to protect routes.
 	overrides := commonapi.RouteMap{
-		"/ping2": customPingHandler,
+		"/ping2": customPingHandlerWithoutAPIKey,
+		"/ping3": commonapi.WithAPIKey(customPingHandlerWithAPIKey),
 	}
 	done, err := commonapi.StartAPI(&config, overrides)
 
 	if err != nil {
-		commonlogger.Error("Error starting API: ", "error", err.Error(), "service", commonconfig.GetConfig().GetServiceName())
+		commonlogger.Error("Error starting API: ", "error", err.Error())
 		return
 	}
 	// starts the scheduler
 
-	commonlogger.Info("Successfully started the service: ", "service", commonconfig.GetConfig().GetServiceName())
+	commonlogger.Info("Successfully started the service: ")
 	// Wait for shutdown to complete
 	<-done
-	commonlogger.Info("Service shutdown complete", "service", commonconfig.GetConfig().GetServiceName())
+	commonlogger.Info("Service shutdown complete")
 
 }

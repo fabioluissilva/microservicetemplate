@@ -4,15 +4,16 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"runtime"
-	"strings"
 	"sync"
+
+	"github.com/fabioluissilva/microservicetemplate/utilities"
 )
 
 var (
-	logLevel *slog.LevelVar
-	logger   *slog.Logger
-	once     sync.Once
+	logLevel    *slog.LevelVar
+	logger      *slog.Logger
+	once        sync.Once
+	serviceName string
 )
 
 func GetLogger() *slog.Logger {
@@ -25,26 +26,36 @@ func GetLogLevel() *slog.LevelVar {
 }
 
 func logWithLevel(level func(string, ...interface{}), msg string, args ...interface{}) {
-	pc, _, line, _ := runtime.Caller(2)
-	packageParts := runtime.FuncForPC(pc).Name()
-	lastSlash := strings.LastIndex(packageParts, "/")
-	if lastSlash != -1 {
-		packageParts = packageParts[lastSlash+1:]
+	pkg, label, line := utilities.CallerLabel(3)
+	if GetLogLevel().Level() < slog.LevelInfo {
+		level(fmt.Sprintf("[%s:%d] %s", label, line, msg), args...)
+	} else {
+		level(fmt.Sprintf("[%s] %s", pkg, msg), args...)
 	}
-	level(fmt.Sprintf("[%s:%d] %s", packageParts, line, msg), args...)
+}
+
+func appendServiceName(args ...interface{}) []interface{} {
+	if serviceName != "" {
+		return append([]interface{}{"service", serviceName}, args...)
+	}
+	return args
 }
 
 func Debug(msg string, args ...interface{}) {
+	args = appendServiceName(args...)
 	logWithLevel(GetLogger().Debug, msg, args...)
 }
 
 func Info(msg string, args ...interface{}) {
+	args = appendServiceName(args...)
 	logWithLevel(GetLogger().Info, msg, args...)
 }
 func Warn(msg string, args ...interface{}) {
+	args = appendServiceName(args...)
 	logWithLevel(GetLogger().Warn, msg, args...)
 }
 func Error(msg string, args ...interface{}) {
+	args = appendServiceName(args...)
 	logWithLevel(GetLogger().Error, msg, args...)
 }
 
@@ -62,6 +73,9 @@ func SetLogLevel(level string) {
 	default:
 		logLevel.Set(slog.LevelInfo)
 	}
+}
+func SetServiceName(name string) {
+	serviceName = name
 }
 
 func initializeLogger() {

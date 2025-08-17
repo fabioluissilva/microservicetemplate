@@ -11,7 +11,6 @@ import (
 
 	"github.com/fabioluissilva/microservicetemplate/commonlogger"
 	"github.com/rabbitmq/amqp091-go"
-	"jmartins.com/messageadapterphotos3/internal/configuration"
 )
 
 // Package mqengine provides an interface to interact with RabbitMQ for message queuing.
@@ -32,6 +31,8 @@ import (
 // 			WithDurable(true),
 // 			WithArgs(map[string]interface{}{
 // 				"x-message-ttl": int32(60000),
+// 				"x-dead-letter-exchange":    "",// Default Exchange for direct delivery
+// 				"x-dead-letter-routing-key": MainQueueName, // main queue name
 // 			}),
 // 		),
 // 		NewQueue("audit",
@@ -218,65 +219,29 @@ func ConnectRabbitMQ(ctx context.Context) error {
 		return fmt.Errorf("[MQEngine] Failed to ensure channel is open: %w", err)
 	}
 
-	commonlogger.Info("[MQEngine] Declaring Queue: " + configuration.GetConfig().QueueName)
-	_, err = channel.QueueDeclare(
-		configuration.GetConfig().QueueName, // name
-		true,                                // durable
-		false,                               // delete when unused
-		false,                               // exclusive
-		false,                               // no-wait
-		nil,                                 // arguments
-	)
-	if err != nil {
-		return fmt.Errorf("[MQEngine] failed to declare queue: %w", err)
+	for _, queue := range mqconfig.Queues {
+		commonlogger.Info("[MQEngine] Declaring Queue: " + queue.Name)
+		_, err = channel.QueueDeclare(
+			queue.Name,                // name
+			queue.Durable,             // durable
+			queue.AutoDelete,          // delete when unused
+			queue.Exclusive,           // exclusive
+			queue.NoWait,              // no-wait
+			amqp091.Table(queue.Args), // arguments converted to amqp091.Table
+		)
+		if err != nil {
+			return fmt.Errorf("[MQEngine] failed to declare queue: %s - %w", queue.Name, err)
+		}
+		commonlogger.Info("[MQEngine] Queue " + queue.Name + " declared and bound successfully")
 	}
 
-	err = channel.QueueBind(
-		configuration.GetConfig().QueueName,    // queue name
-		configuration.GetConfig().QueueName,    // routing key
-		configuration.GetConfig().ExchangeName, // exchange
-		false,                                  // no-wait
-		nil,                                    // arguments
-	)
-	if err != nil {
-		return fmt.Errorf("[MQEngine] failed to bind queue: %w", err)
-	}
-	commonlogger.Info("[MQEngine] Queue " + configuration.GetConfig().QueueName + " declared and bound successfully")
-	// Declare Retry Queue
-	_, err = channel.QueueDeclare(
-		configuration.GetConfig().RetryQueueName, // name
-		true,                                     // durable
-		false,                                    // delete when unused
-		false,                                    // exclusive
-		false,                                    // no-wait
-		amqp091.Table{
-			"x-message-ttl":             int32(configuration.GetConfig().RetryTTL),
-			"x-dead-letter-exchange":    "",                                  // Default Exchange for direct delivery
-			"x-dead-letter-routing-key": configuration.GetConfig().QueueName, // main queue name
-		},
-	)
 	if err != nil {
 		return fmt.Errorf("[MQEngine] failed to declare retry queue: %w", err)
 	}
-	commonlogger.Info("[MQEngine] Retry Queue " + configuration.GetConfig().RetryQueueName + " declared successfully")
-	// Declare Retry Queue
-	_, err = channel.QueueDeclare(
-		configuration.GetConfig().DeadLetterQueueName, // name
-		true,  // durable
-		false, // delete when unused
-		false, // exclusive
-		false, // no-wait
-		nil,   // arguments
-	)
-	if err != nil {
-		return fmt.Errorf("[MQEngine] failed to declare Dead Letter queue: %w", err)
-	}
-	commonlogger.Info("[MQEngine] Dead Letter Queue " + configuration.GetConfig().DeadLetterQueueName + " declared successfully")
-
 	return nil
 }
 
-func SendMessageToQueue(message string, system string, contenttype string, correlationId string) (string, error) {
+func SendMessageToQueue(queuename string, message string, system string, contenttype string, correlationId string, headers map[string]interface{}) (string, error) {
 	mu.Lock()
 	defer mu.Unlock()
 
@@ -285,21 +250,37 @@ func SendMessageToQueue(message string, system string, contenttype string, corre
 		commonlogger.Error("[MQEngine] Failed to ensure channel is open", slog.Any("error", err))
 		return "", fmt.Errorf("[MQEngine] Failed to ensure channel is open: %w", err)
 	}
+	var queueConfig *QueueConfiguration
+	for _, queue := range mqconfig.Queues {
+		if queue.Name == queuename {
+			queueConfig = &queue
+			break
+		}
+	}
 
-	commonlogger.Info("[MQEngine] Sending message to queue: " + configuration.GetConfig().QueueName)
+	if queueConfig == nil {
+		return "", fmt.Errorf("[MQEngine] queue configuration not found for queue: %s", queuename)
+	}
+
+	commonlogger.Info("[MQEngine] Sending message to queue: " + queuename)
 	// Publish a message to the queue
+	headersMap := amqp091.Table{}
+	if headers != nil {
+		headersMap = amqp091.Table(headers)
+	}
 	err = channel.PublishWithContext(context.Background(),
-		configuration.GetConfig().ExchangeName, // exchange
-		configuration.GetConfig().QueueName,    // routing key
-		false,                                  // mandatory
-		false,                                  // immediate
+		queueConfig.ExchangeName, // exchange
+		queueConfig.Name,         // routing key
+		false,                    // mandatory
+		false,                    // immediate
 		amqp091.Publishing{
 			ContentType:   contenttype,
 			Body:          []byte(message),
 			CorrelationId: correlationId,
 			AppId:         system,
-			Headers:       amqp091.Table{},
+			Headers:       headersMap,
 		})
+
 	if err != nil {
 		return "", fmt.Errorf("[MQEngine] failed to publish message: %w", err)
 	}
@@ -361,10 +342,9 @@ func SaveMessageToFile(correlationId string, body string, headers map[string]int
 	return nil
 }
 
-func CopyMessageToQueue(message amqp091.Delivery, targetQueue string) error {
+func MoveMessageToRetry(message amqp091.Delivery, retryQueue string, deadLetterQueue string, retryTTL int, maxRetries int32) error {
 	mu.Lock()
 	defer mu.Unlock()
-	retryTTL := 0
 
 	err := ensureChannel()
 	if err != nil {
@@ -373,18 +353,49 @@ func CopyMessageToQueue(message amqp091.Delivery, targetQueue string) error {
 	}
 
 	headers := message.Headers
+	retryCount := int32(0)
 
 	if headers["X-Retry-Count"] != nil {
-		retryCount := headers["X-Retry-Count"].(int32)
-		retryCount++
-		headers["X-Retry-Count"] = retryCount
+		if val, ok := headers["X-Retry-Count"].(int32); ok {
+			retryCount = val
+		}
+		headers["X-Retry-Count"] = retryCount + 1
 	} else {
 		headers["X-Retry-Count"] = 1
 	}
 
-	if headers["X-Retry-TTL"] != nil {
-		retryTTL = headers["X-Retry-TTL"].(int)
+	if retryTTL > 0 {
+		message.Expiration = strconv.Itoa(retryTTL)
+	} else {
+		message.Expiration = ""
 	}
+
+	if retryCount >= int32(maxRetries+1) {
+		commonlogger.Debug("[MQEngine] Max Retry Attempts reached. Moving to Dead Letter Queue.")
+		message.Expiration = ""
+		retryQueue = deadLetterQueue
+	}
+
+	err = CopyMessageToQueue(message, retryQueue)
+	if err != nil {
+		return fmt.Errorf("[MQEngine] failed to copy message to retry queue: %w", err)
+	}
+	commonlogger.Debug(fmt.Sprintf("[MQEngine] Message moved to retry queue: %s with headers: %v, retryCount: %d and expiration: %s", retryQueue, headers, retryCount, message.Expiration))
+	return nil
+}
+
+func CopyMessageToQueue(message amqp091.Delivery, targetQueue string) error {
+	mu.Lock()
+	defer mu.Unlock()
+	// retryTTL := 0
+
+	err := ensureChannel()
+	if err != nil {
+		commonlogger.Error("[MQEngine] Failed to ensure channel is open", slog.Any("error", err))
+		return fmt.Errorf("[MQEngine] Failed to ensure channel is open: %w", err)
+	}
+
+	headers := message.Headers
 
 	publishing := amqp091.Publishing{
 		ContentType:   message.ContentType,
@@ -397,20 +408,8 @@ func CopyMessageToQueue(message amqp091.Delivery, targetQueue string) error {
 		Timestamp:     message.Timestamp,
 	}
 
-	// Max Retry Attempts reached, move to Dead Letter Queue and remove timeout
-	if retryCount, ok := headers["X-Retry-Count"].(int32); ok && retryCount >= int32(configuration.GetConfig().RetryMaxAttempts+1) {
-		commonlogger.Debug("[MQEngine] Max Retry Attempts reached. Moving to Dead Letter Queue.")
-		targetQueue = configuration.GetConfig().DeadLetterQueueName
-		retryTTL = 0 // No expiration time for dead letter queue
-	} else {
-		if retryTTL > 0 {
-			publishing.Expiration = strconv.Itoa(retryTTL)
-		}
-	}
-	commonlogger.Debug(fmt.Sprintf("[MQEngine] Copying message to queue: %s with headers: %v Retry Count: %v Expiration Time: %s", targetQueue, headers, headers["X-Retry-Count"], publishing.Expiration))
-
+	commonlogger.Debug(fmt.Sprintf("Copying message to queue: %s with headers: %v", targetQueue, headers))
 	// Publish the message to the target queue
-
 	err = channel.PublishWithContext(
 		context.Background(),
 		"", // default exchange to publish to the queue directly
@@ -463,14 +462,24 @@ func IsHealthy() bool {
 	defer mu.Unlock()
 
 	if conn == nil || channel == nil {
-		commonlogger.Error("RabbitMQ connection or channel is not initialized", "package", "mqengine", "service", configuration.GetConfig().MessageAdapterName)
+		commonlogger.Error("RabbitMQ connection or channel is not initialized")
 		return false
 	}
 
 	if conn.IsClosed() {
-		commonlogger.Error("RabbitMQ connection is closed", "package", "mqengine", "service", configuration.GetConfig().MessageAdapterName)
+		commonlogger.Error("RabbitMQ connection is closed")
 		return false
 	}
 
 	return true
+}
+
+func InitMQEngine(ctx context.Context, config MQConfiguration) error {
+	mqconfig = config
+	if err := ConnectRabbitMQ(ctx); err != nil {
+		commonlogger.Error("Failed to connect to RabbitMQ", "error", err)
+		return err
+	}
+	commonlogger.Info("RabbitMQ Engine initialized successfully", "host", mqconfig.MqHost, "port", mqconfig.MqPort, "vhost", mqconfig.VHost)
+	return nil
 }

@@ -4,6 +4,10 @@ GET http://localhost:8001/ping?message=hello
 ### Ping2
 GET http://localhost:8001/ping2
 
+### Ping3
+GET http://localhost:8001/ping3
+X-API-KEY: 1234
+
 ### Release Notes
 GET http://localhost:8001/releasenotes
 

@@ -3,13 +3,14 @@ package utilities
 import (
 	"encoding/json"
 	"fmt"
-	"os"
+	"path/filepath"
 	"reflect"
+	"regexp"
+	"runtime"
 	"strings"
-
-	"github.com/fabioluissilva/microservicetemplate/commonconfig"
-	"github.com/fabioluissilva/microservicetemplate/commonlogger"
 )
+
+var anonRe = regexp.MustCompile(`\.func\d+$`)
 
 // maskSensitive masks sensitive fields as requested.
 func maskSensitive(value string) string {
@@ -155,13 +156,32 @@ func structToMaskedMap(v reflect.Value) (map[string]any, error) {
 	return out, nil
 }
 
-func ReadReleaseNotes() (string, error) {
-	releaseNotesPath := "releasenotes.txt"
-	commonlogger.Debug(fmt.Sprintf("Reading Release Notes from: %s", releaseNotesPath), "service", commonconfig.GetConfig().GetServiceName())
-	content, err := os.ReadFile(releaseNotesPath)
-	if err != nil {
-		commonlogger.Error("Error reading release notes:", "error", err, "service", commonconfig.GetConfig().GetServiceName())
-		return "", err
+func CallerLabel(skip int) (pkg string, label string, line int) {
+	// skip: 0=this func, 1=wrapper, 2=caller, etc.
+	pc, _, line, ok := runtime.Caller(skip)
+	if !ok {
+		return "unknown", "unknown", 0
 	}
-	return string(content), nil
+	fn := runtime.FuncForPC(pc)
+	if fn == nil {
+		return "unknown", "unknown", line
+	}
+	name := fn.Name() // e.g. "github.com/me/commonapi.(*Server).StartAPI.func2"
+
+	// Clean up method wrappers and closures
+	name = strings.TrimSuffix(name, "-fm")   // method value wrapper
+	name = anonRe.ReplaceAllString(name, "") // remove ".funcN"
+
+	// Keep only the last path segment (pkg + symbol)
+	last := filepath.Base(name) // "commonapi.(*Server).StartAPI"
+
+	// Turn periods into "->" but keep receiver grouping readable
+	parts := strings.Split(last, ".")
+	if len(parts) > 1 {
+		// parts[0] is package; the rest is receiver/method chain
+		pkg := parts[0]
+		sym := strings.Join(parts[1:], "->")
+		return pkg,fmt.Sprintf("%s->%s", pkg, sym), line
+	}
+	return pkg, last, line
 }

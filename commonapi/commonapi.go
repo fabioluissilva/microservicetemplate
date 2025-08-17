@@ -27,21 +27,21 @@ type RouteMap map[string]http.HandlerFunc
 func defaultRoutes(cfg commonconfig.Config) RouteMap {
 
 	return RouteMap{
-		"/ping":          pingHandler,                    // no cfg needed
-		"/config":        withAPIKey(configHandler(cfg)), // needs cfg
+		"/ping":          pingHandler,
+		"/config":        WithAPIKey(configHandler(cfg)), // needs cfg
 		"/releasenotes":  releaseNotesHandler,
 		"/metrics":       promhttp.Handler().ServeHTTP,
 		"/health":        healthHandler,
 		"/liveness":      livenessHandler,
 		"/readiness":     readinessHandler,
-		"/runningjobs":   withAPIKey(runningJobsHandler),   // needs API key
-		"/scheduledjobs": withAPIKey(scheduledJobsHandler), // needs API key
+		"/runningjobs":   WithAPIKey(runningJobsHandler),
+		"/scheduledjobs": WithAPIKey(scheduledJobsHandler),
 	}
 }
 
 // Middleware to check if the X-API-KEY is present and valid according to the configuration
 // If the API key is invalid, it returns a 401 Unauthorized response.
-func withAPIKey(fn http.HandlerFunc) http.HandlerFunc {
+func WithAPIKey(fn http.HandlerFunc) http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		apiKey := r.Header.Get("X-API-KEY")
@@ -63,17 +63,28 @@ func testHttpMethod(r *http.Request, w *http.ResponseWriter, method string, hand
 	if r.Method != method {
 		commonmetrics.NumberOfErrors.Inc()
 		http.Error(*w, fmt.Sprintf(`{"error": "Only %s method is allowed"}`, method), http.StatusMethodNotAllowed)
-		commonlogger.Error(fmt.Sprintf("%s: Only %s method is allowed", handler, method), "service", commonconfig.GetConfig().GetServiceName())
+		commonlogger.Error(fmt.Sprintf("%s: Only %s method is allowed", handler, method))
 		return false
 	}
 	return true
+}
+
+func readReleaseNotes() (string, error) {
+	releaseNotesPath := "releasenotes.txt"
+	commonlogger.Debug(fmt.Sprintf("Reading Release Notes from: %s", releaseNotesPath))
+	content, err := os.ReadFile(releaseNotesPath)
+	if err != nil {
+		commonlogger.Error("Error reading release notes:", "error", err)
+		return "", err
+	}
+	return string(content), nil
 }
 
 func releaseNotesHandler(w http.ResponseWriter, r *http.Request) {
 	if !testHttpMethod(r, &w, http.MethodGet, "releaseNotesHandler") {
 		return
 	}
-	notes, err := utilities.ReadReleaseNotes()
+	notes, err := readReleaseNotes()
 	if err != nil {
 		commonmetrics.NumberOfErrors.Inc()
 		http.Error(w, `{"error": "Failed to read release notes"}`, http.StatusInternalServerError)
@@ -91,7 +102,7 @@ func pingHandler(w http.ResponseWriter, r *http.Request) {
 	if message == "" {
 		message = "No message provided"
 	}
-	commonlogger.Debug(fmt.Sprintf("Ping request received: %s", message), "service", commonconfig.GetConfig().GetServiceName())
+	commonlogger.Debug(fmt.Sprintf("Ping request received: %s", message))
 
 	response := map[string]string{
 		"service":   commonconfig.GetConfig().GetServiceName(),
@@ -106,11 +117,11 @@ func pingHandler(w http.ResponseWriter, r *http.Request) {
 
 func configHandler(cfg commonconfig.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		commonlogger.Debug("[API] Config request received", "service", cfg.GetServiceName())
+		commonlogger.Debug("Config request received")
 		if r.Method != http.MethodGet {
 			commonmetrics.NumberOfErrors.Inc()
 			http.Error(w, `{"error": "Only GET method is allowed"}`, http.StatusMethodNotAllowed)
-			commonlogger.Error("Only GET method is allowed", "service", cfg.GetServiceName())
+			commonlogger.Error("Only GET method is allowed")
 		}
 		w.Header().Set("Content-Type", "application/json")
 		commonmetrics.NumberOfConfigRequests.Inc()
@@ -118,7 +129,7 @@ func configHandler(cfg commonconfig.Config) http.HandlerFunc {
 		if err != nil {
 			commonmetrics.NumberOfErrors.Inc()
 			http.Error(w, `{"error": "Failed to generate config JSON"}`, http.StatusInternalServerError)
-			commonlogger.Error("Failed to generate config JSON", "error", err.Error(), "service", cfg.GetServiceName())
+			commonlogger.Error("Failed to generate config JSON", "error", err.Error())
 			return
 		}
 		w.Write([]byte(maskedJson))
@@ -128,7 +139,7 @@ func configHandler(cfg commonconfig.Config) http.HandlerFunc {
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, `{"error": "Only GET method is allowed"}`, http.StatusMethodNotAllowed)
-		commonlogger.Error("Only GET method is allowed", "package", "api", "service", commonconfig.GetConfig().GetServiceName())
+		commonlogger.Error("Only GET method is allowed", "package", "api")
 		return
 	}
 	WriteJSONResponse(w, map[string]string{"status": "ok"})
@@ -156,9 +167,9 @@ func runningJobsHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error": "Only GET method is allowed"}`, http.StatusMethodNotAllowed)
 		return
 	}
-	commonlogger.Debug("[API] Scheduled jobs request received", "service", commonconfig.GetConfig().GetServiceName())
+	commonlogger.Debug("Scheduled jobs request received")
 	jobs := commonscheduler.GetJobsInfo()
-	commonlogger.Debug(fmt.Sprintf("[API] Scheduled jobs response: %v", jobs), "service", commonconfig.GetConfig().GetServiceName())
+	commonlogger.Debug(fmt.Sprintf("Scheduled jobs response: %v", jobs))
 	WriteJSONResponse(w, jobs)
 }
 
@@ -167,15 +178,15 @@ func scheduledJobsHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error": "Only GET method is allowed"}`, http.StatusMethodNotAllowed)
 		return
 	}
-	commonlogger.Debug("[API] Scheduled jobs request received", "service", commonconfig.GetConfig().GetServiceName())
+	commonlogger.Debug("Scheduled jobs request received")
 	jobs := commonscheduler.GetScheduledJobs()
-	commonlogger.Debug(fmt.Sprintf("[API] Scheduled jobs response: %v", jobs), "service", commonconfig.GetConfig().GetServiceName())
+	commonlogger.Debug(fmt.Sprintf("Scheduled jobs response: %v", jobs))
 	WriteJSONResponse(w, jobs)
 }
 
 func StartAPI(cfg commonconfig.Config, overrides RouteMap) (chan struct{}, error) {
 	done := make(chan struct{})
-	commonlogger.Info(fmt.Sprintf("Starting Prometheus Metrics Listener on %d", cfg.GetMetricsPort()), "service", cfg.GetServiceName())
+	commonlogger.Info(fmt.Sprintf("Starting Prometheus Metrics Listener on %d", cfg.GetMetricsPort()))
 
 	// Create servers
 	metricsServer := &http.Server{
@@ -194,45 +205,45 @@ func StartAPI(cfg commonconfig.Config, overrides RouteMap) (chan struct{}, error
 	// Start metrics server
 	go func() {
 		if err := metricsServer.ListenAndServe(); err != http.ErrServerClosed {
-			commonlogger.Error(fmt.Sprintf("Metrics server error: %s", err.Error()), "service", cfg.GetServiceName())
+			commonlogger.Error(fmt.Sprintf("Metrics server error: %s", err.Error()))
 		}
 	}()
 
 	// ✅ Apply overrides if provided
 	finalRoutes := defaultRoutes(cfg)
 	for path, handler := range overrides {
-		commonlogger.Debug(fmt.Sprintf("Overriding/adding route: %s", path), "service", cfg.GetServiceName())
+		commonlogger.Debug(fmt.Sprintf("Overriding/adding route: %s", path))
 		finalRoutes[path] = handler
 	}
 
 	// ✅ Register all routes
 	for path, handler := range finalRoutes {
 		handlerName := runtime.FuncForPC(reflect.ValueOf(handler).Pointer()).Name()
-		commonlogger.Info(fmt.Sprintf("Registered route: %s - %s", path, handlerName), "service", cfg.GetServiceName())
+		commonlogger.Info(fmt.Sprintf("Registered route: %s - %s", path, handlerName))
 		http.HandleFunc(path, handler)
 	}
 
 	// Start API server
 	go func() {
-		commonlogger.Info(fmt.Sprintf("[API] Starting API on port %d", cfg.GetPort()), "service", cfg.GetServiceName())
+		commonlogger.Info(fmt.Sprintf("Starting API on port %d", cfg.GetPort()))
 		if err := apiServer.ListenAndServe(); err != http.ErrServerClosed {
-			commonlogger.Error(fmt.Sprintf("API server error: %s", err.Error()), "service", cfg.GetServiceName())
+			commonlogger.Error(fmt.Sprintf("API server error: %s", err.Error()))
 		}
 	}()
 
 	// Graceful shutdown
 	go func() {
 		sig := <-sigChan
-		commonlogger.Info(fmt.Sprintf("Received signal: %v", sig), "service", cfg.GetServiceName())
+		commonlogger.Info(fmt.Sprintf("Received signal: %v", sig))
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		if err := metricsServer.Shutdown(ctx); err != nil {
-			commonlogger.Error(fmt.Sprintf("Metrics server shutdown error: %s", err.Error()), "service", cfg.GetServiceName())
+			commonlogger.Error(fmt.Sprintf("Metrics server shutdown error: %s", err.Error()))
 		}
 		if err := apiServer.Shutdown(ctx); err != nil {
-			commonlogger.Error(fmt.Sprintf("API server shutdown error: %s", err.Error()), "service", cfg.GetServiceName())
+			commonlogger.Error(fmt.Sprintf("API server shutdown error: %s", err.Error()))
 		}
 		close(done)
 	}()

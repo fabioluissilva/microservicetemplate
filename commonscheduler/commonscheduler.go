@@ -67,10 +67,10 @@ func InitScheduler(extraJobs []CronJob) {
 	var err error
 	scheduler, err = gocron.NewScheduler()
 	if err != nil {
-		commonlogger.GetLogger().Error(fmt.Sprintf("InitScheduler: Error creating scheduler: %s", err.Error()), "service", commonconfig.GetConfig().GetServiceName())
+		commonlogger.GetLogger().Error(fmt.Sprintf("InitScheduler: Error creating scheduler: %s", err.Error()))
 		return
 	}
-	commonlogger.GetLogger().Debug("InitScheduler: Registering jobs...", "service", commonconfig.GetConfig().GetServiceName())
+	commonlogger.GetLogger().Debug("InitScheduler: Registering jobs...")
 	RegisterJobs(extraJobs)
 	for _, job := range jobs {
 		commonlogger.GetLogger().Debug("InitScheduler: Setting Cron for " + job.Name + ": " + job.CronExpr)
@@ -85,7 +85,7 @@ func InitScheduler(extraJobs []CronJob) {
 		}
 		commonlogger.GetLogger().Debug("InitScheduler: Started " + job.Name + " with ID: " + cronJob.ID().String())
 	}
-	commonlogger.GetLogger().Debug("InitScheduler: Starting Scheduler...", "service", commonconfig.GetConfig().GetServiceName())
+	commonlogger.GetLogger().Debug("InitScheduler: Starting Scheduler...")
 	scheduler.Start()
 }
 
