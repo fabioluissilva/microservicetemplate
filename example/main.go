@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/fabioluissilva/microservicetemplate/commonapi"
@@ -64,6 +65,21 @@ func customScheduledJob() {
 	// You can add more logic here, like sending metrics or logging
 }
 
+func consumeMessages() {
+	commonlogger.Debug("[Engine - ConsumeMessages] Starting to consume messages")
+	deliveries, err := commonmqengine.ConsumeFromQueue("orders", true)
+
+	if err != nil {
+		commonlogger.Error(fmt.Sprintf("Error consuming from queue: %s", err.Error()))
+		return
+	}
+
+	for delivery := range deliveries {
+		commonlogger.Info(fmt.Sprintf("Processing delivery: %s", delivery.MessageId))
+		commonlogger.Debug(fmt.Sprintf("Delivery body: %s", delivery.Body))
+	}
+}
+
 func main() {
 	var config ServiceConfig
 	commonconfig.Initialize(&config)
@@ -120,12 +136,11 @@ func main() {
 		"/ping3": commonapi.WithAPIKey(customPingHandlerWithAPIKey),
 	}
 	done, err := commonapi.StartAPI(&config, overrides)
-
 	if err != nil {
 		commonlogger.Error("Error starting API: ", "error", err.Error())
 		return
 	}
-	// starts the scheduler
+	go consumeMessages()
 
 	commonlogger.Info("Successfully started the service: ")
 	// Wait for shutdown to complete

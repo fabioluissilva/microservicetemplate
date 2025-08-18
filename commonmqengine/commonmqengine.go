@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"os"
 	"strconv"
 	"sync"
@@ -174,23 +173,23 @@ func ensureChannel() error {
 	url, urlObfuscated := buildUrl()
 
 	if conn == nil || conn.IsClosed() {
-		commonlogger.Warn("[MQEngine] ensureChannel: connection is not initialized or is closed. Reconnecting to RabbitMQ at URL: " + urlObfuscated)
+		commonlogger.Warn(fmt.Sprintf("ensureChannel: connection is not initialized or is closed. Reconnecting to RabbitMQ at URL: %s", urlObfuscated))
 		conn, err = amqp091.Dial(url)
 		if err != nil {
-			commonlogger.Error("[MQEngine] ensureChannel: Failed to connect to RabbitMQ", slog.Any("error", err))
-			return fmt.Errorf("[MQEngine] ensureChannel: Failed to connect to RabbitMQ: %w", err)
+			commonlogger.Error(fmt.Sprintf("ensureChannel: Failed to connect to RabbitMQ: %s", err))
+			return fmt.Errorf("ensureChannel: Failed to connect to RabbitMQ: %w", err)
 		}
 	}
 
 	if channel == nil || channel.IsClosed() {
 		channel, err = conn.Channel()
-		commonlogger.Warn("[MQEngine] ensureChannel: channel is not open. Opening Channel")
+		commonlogger.Warn("ensureChannel: channel is not open. Opening Channel")
 		if err != nil {
-			commonlogger.Error("[MQEngine] ensureChannel: Failed to open Channel", slog.Any("error", err))
-			return fmt.Errorf("[MQEngine] ensureChannel: Failed to open Channel: %w", err)
+			commonlogger.Error(fmt.Sprintf("ensureChannel: Failed to open Channel: %s", err))
+			return fmt.Errorf("ensureChannel: Failed to open Channel: %w", err)
 		}
 	}
-	commonlogger.Debug("[MQEngine] ensureChannel: Channel is open and ready to use at url: " + urlObfuscated)
+	commonlogger.Debug(fmt.Sprintf("ensureChannel: Channel is open and ready to use at url: %s", urlObfuscated))
 	return nil
 }
 
@@ -202,7 +201,7 @@ func buildUrl() (string, string) {
 	}
 	url := fmt.Sprintf("amqp://%s:%s@%s:%d/%s", mqconfig.Username, mqconfig.Password, mqconfig.MqHost, mqconfig.MqPort, mqconfig.VHost)
 	urlObfuscated := fmt.Sprintf("amqp://%s:%s@%s:%d/%s", mqconfig.Username, obfuscatedPassword, mqconfig.MqHost, mqconfig.MqPort, mqconfig.VHost)
-	commonlogger.Debug("[MQEngine] Engine: Connection URL: " + urlObfuscated)
+	commonlogger.Debug("Engine: Connection URL: " + urlObfuscated)
 	return url, urlObfuscated
 }
 
@@ -210,17 +209,17 @@ func ConnectRabbitMQ(ctx context.Context) error {
 	mu.Lock()
 	defer mu.Unlock()
 
-	commonlogger.Info("[MQEngine] Connecting to RabbitMQ at Host: " + mqconfig.MqHost + " Port: " + fmt.Sprintf("%d", mqconfig.MqPort) + " VHost: " + mqconfig.VHost)
+	commonlogger.Info(fmt.Sprintf("Connecting to RabbitMQ at Host: %s Port: %d VHost: %s", mqconfig.MqHost, mqconfig.MqPort, mqconfig.VHost))
 	// Connect to RabbitMQ server
 
 	err := ensureChannel()
 	if err != nil {
-		commonlogger.Error("[MQEngine] Failed to ensure channel is open", slog.Any("error", err))
-		return fmt.Errorf("[MQEngine] Failed to ensure channel is open: %w", err)
+		commonlogger.Error(fmt.Sprintf("Failed to ensure channel is open: %s", err))
+		return fmt.Errorf("failed to ensure channel is open: %w", err)
 	}
 
 	for _, queue := range mqconfig.Queues {
-		commonlogger.Info("[MQEngine] Declaring Queue: " + queue.Name)
+		commonlogger.Info(fmt.Sprintf("Declaring Queue: %s", queue.Name))
 		_, err = channel.QueueDeclare(
 			queue.Name,                // name
 			queue.Durable,             // durable
@@ -230,13 +229,13 @@ func ConnectRabbitMQ(ctx context.Context) error {
 			amqp091.Table(queue.Args), // arguments converted to amqp091.Table
 		)
 		if err != nil {
-			return fmt.Errorf("[MQEngine] failed to declare queue: %s - %w", queue.Name, err)
+			return fmt.Errorf("failed to declare queue: %s - %w", queue.Name, err)
 		}
-		commonlogger.Info("[MQEngine] Queue " + queue.Name + " declared and bound successfully")
+		commonlogger.Info(fmt.Sprintf("Queue %s declared and bound successfully", queue.Name))
 	}
 
 	if err != nil {
-		return fmt.Errorf("[MQEngine] failed to declare retry queue: %w", err)
+		return fmt.Errorf("failed to declare retry queue: %w", err)
 	}
 	return nil
 }
@@ -247,8 +246,8 @@ func SendMessageToQueue(queuename string, message string, system string, content
 
 	err := ensureChannel()
 	if err != nil {
-		commonlogger.Error("[MQEngine] Failed to ensure channel is open", slog.Any("error", err))
-		return "", fmt.Errorf("[MQEngine] Failed to ensure channel is open: %w", err)
+		commonlogger.Error(fmt.Sprintf("Failed to ensure channel is open: %s", err))
+		return "", fmt.Errorf("failed to ensure channel is open: %w", err)
 	}
 	var queueConfig *QueueConfiguration
 	for _, queue := range mqconfig.Queues {
@@ -259,10 +258,10 @@ func SendMessageToQueue(queuename string, message string, system string, content
 	}
 
 	if queueConfig == nil {
-		return "", fmt.Errorf("[MQEngine] queue configuration not found for queue: %s", queuename)
+		return "", fmt.Errorf("queue configuration not found for queue: %s", queuename)
 	}
 
-	commonlogger.Info("[MQEngine] Sending message to queue: " + queuename)
+	commonlogger.Info(fmt.Sprintf("Sending message to queue: %s", queuename))
 	// Publish a message to the queue
 	headersMap := amqp091.Table{}
 	if headers != nil {
@@ -282,7 +281,7 @@ func SendMessageToQueue(queuename string, message string, system string, content
 		})
 
 	if err != nil {
-		return "", fmt.Errorf("[MQEngine] failed to publish message: %w", err)
+		return "", fmt.Errorf("failed to publish message: %w", err)
 	}
 	return message, nil
 }
@@ -297,11 +296,11 @@ func ConsumeFromQueue(queueName string, autoAck bool) (<-chan amqp091.Delivery, 
 
 	err := ensureChannel()
 	if err != nil {
-		commonlogger.Error("[MQEngine] Failed to ensure channel is open", slog.Any("error", err))
-		return nil, fmt.Errorf("[MQEngine] Failed to ensure channel is open: %w", err)
+		commonlogger.Error(fmt.Sprintf("Failed to ensure channel is open: %s", err))
+		return nil, fmt.Errorf("failed to ensure channel is open: %w", err)
 	}
 
-	commonlogger.Info("[MQEngine] Starting to consume from queue: " + queueName)
+	commonlogger.Info(fmt.Sprintf("Starting to consume from queue: %s", queueName))
 
 	deliveries, err := channel.Consume(
 		queueName, // queue name
@@ -313,10 +312,10 @@ func ConsumeFromQueue(queueName string, autoAck bool) (<-chan amqp091.Delivery, 
 		nil,       // arguments
 	)
 	if err != nil {
-		return nil, fmt.Errorf("[MQEngine] failed to register consumer: %w", err)
+		return nil, fmt.Errorf("failed to register consumer: %w", err)
 	}
 
-	commonlogger.Info("[MQEngine] Consumer registered successfully")
+	commonlogger.Info("Consumer registered successfully")
 	return deliveries, nil
 }
 
@@ -348,8 +347,8 @@ func MoveMessageToRetry(message amqp091.Delivery, retryQueue string, deadLetterQ
 
 	err := ensureChannel()
 	if err != nil {
-		commonlogger.Error("[MQEngine] Failed to ensure channel is open", slog.Any("error", err))
-		return fmt.Errorf("[MQEngine] Failed to ensure channel is open: %w", err)
+		commonlogger.Error(fmt.Sprintf("Failed to ensure channel is open: %s", err))
+		return fmt.Errorf("failed to ensure channel is open: %w", err)
 	}
 
 	headers := message.Headers
@@ -371,16 +370,16 @@ func MoveMessageToRetry(message amqp091.Delivery, retryQueue string, deadLetterQ
 	}
 
 	if retryCount >= int32(maxRetries+1) {
-		commonlogger.Debug("[MQEngine] Max Retry Attempts reached. Moving to Dead Letter Queue.")
+		commonlogger.Debug("Max Retry Attempts reached. Moving to Dead Letter Queue.")
 		message.Expiration = ""
 		retryQueue = deadLetterQueue
 	}
 
 	err = CopyMessageToQueue(message, retryQueue)
 	if err != nil {
-		return fmt.Errorf("[MQEngine] failed to copy message to retry queue: %w", err)
+		return fmt.Errorf("failed to copy message to retry queue: %w", err)
 	}
-	commonlogger.Debug(fmt.Sprintf("[MQEngine] Message moved to retry queue: %s with headers: %v, retryCount: %d and expiration: %s", retryQueue, headers, retryCount, message.Expiration))
+	commonlogger.Debug(fmt.Sprintf("Message moved to retry queue: %s with headers: %v, retryCount: %d and expiration: %s", retryQueue, headers, retryCount, message.Expiration))
 	return nil
 }
 
@@ -391,8 +390,8 @@ func CopyMessageToQueue(message amqp091.Delivery, targetQueue string) error {
 
 	err := ensureChannel()
 	if err != nil {
-		commonlogger.Error("[MQEngine] Failed to ensure channel is open", slog.Any("error", err))
-		return fmt.Errorf("[MQEngine] Failed to ensure channel is open: %w", err)
+		commonlogger.Error(fmt.Sprintf("Failed to ensure channel is open: %s", err))
+		return fmt.Errorf("failed to ensure channel is open: %w", err)
 	}
 
 	headers := message.Headers
@@ -419,7 +418,7 @@ func CopyMessageToQueue(message amqp091.Delivery, targetQueue string) error {
 		publishing,
 	)
 	if err != nil {
-		return fmt.Errorf("[MQEngine] failed to copy message: %w", err)
+		return fmt.Errorf("failed to copy message: %w", err)
 	}
 	return nil
 }
@@ -477,9 +476,9 @@ func IsHealthy() bool {
 func InitMQEngine(ctx context.Context, config MQConfiguration) error {
 	mqconfig = config
 	if err := ConnectRabbitMQ(ctx); err != nil {
-		commonlogger.Error("Failed to connect to RabbitMQ", "error", err)
+		commonlogger.Error(fmt.Sprintf("Failed to connect to RabbitMQ: %s", err))
 		return err
 	}
-	commonlogger.Info("RabbitMQ Engine initialized successfully", "host", mqconfig.MqHost, "port", mqconfig.MqPort, "vhost", mqconfig.VHost)
+	commonlogger.Info(fmt.Sprintf("RabbitMQ Engine initialized successfully: host=%s, port=%d, vhost=%s", mqconfig.MqHost, mqconfig.MqPort, mqconfig.VHost))
 	return nil
 }
