@@ -5,7 +5,7 @@ Check the example/main.go  and the example/ folder in how to use in your own mic
 ## Proposed Dockerfile
 ~~~Dockerfile
 # Stage 1: Build stage
-FROM docker.io/library/golang:1.24.4 AS builder
+FROM docker.io/library/golang:1.24.6 AS builder
 
 # Set environment variables for the build
 WORKDIR /app
