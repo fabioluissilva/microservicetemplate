@@ -46,8 +46,14 @@ func customPingHandlerWithoutAPIKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func customPingHandlerWithAPIKey(w http.ResponseWriter, r *http.Request) {
-
 	response := map[string]string{"message": "Custom Ping Handler WITH API Key is working!"}
+	responseJSON, err := json.Marshal(response)
+	if err != nil {
+		commonlogger.Error("Error marshalling response to JSON: ", "error", err.Error())
+		return
+	}
+	commonmqengine.SendMessageToQueue("ordersretry", string(responseJSON), "", "application/json", "1", nil)
+
 	w.Header().Set("Content-Type", "application/json")
 	commonlogger.Info("Custom Ping with API KEY Handler called")
 	json.NewEncoder(w).Encode(response)
@@ -87,8 +93,19 @@ func main() {
 				commonmqengine.WithRoutingKey(""),
 				commonmqengine.WithDurable(true),
 			),
-			commonmqengine.NewQueue("audit",
-				commonmqengine.WithAutoDelete(true),
+			commonmqengine.NewQueue("ordersretry",
+				commonmqengine.WithExchange(""),
+				commonmqengine.WithRoutingKey(""),
+				commonmqengine.WithDurable(true),
+				commonmqengine.WithArgs(map[string]interface{}{
+					"x-dead-letter-routing-key": "orders",
+					"x-dead-letter-exchange":    "",
+					"x-message-ttl":             5000,
+				}),
+			),
+			commonmqengine.NewQueue("ordersdlq",
+				commonmqengine.WithExchange(""),
+				commonmqengine.WithRoutingKey(""),
 				commonmqengine.WithDurable(true),
 			),
 		),
